@@ -1,0 +1,465 @@
+<!doctype html>
+<!-- david@mohrgould.com 2010 -->
+<html><head><title>Life on Canvas</title>
+<script src="jquery.min.js"></script>
+<script src="jquery-ui.js"></script>
+<script>
+$(document).ready(function () {
+
+	// Options
+	
+	var cellColor = "#060",
+		hiCellColor = "#393",
+		worldColor = "#ace",
+		hiWorldColor = "#69c",
+		targetDelay = 50,
+	 	cellSize = 7, // pixel width and height of each drawn cell
+		highLife = false, // dead cells revive with 3 or 6 neighbors
+		width = 130, height = 70;
+		//width = Math.floor(($(window).width()-200) / cellSize), // fill window
+		//height = Math.floor(($(window).height()-400) / cellSize); // fill window
+		
+	
+	// World Mechanics
+	
+	var newState = function (state, neighbors) {
+		if(state === 1) {
+			return (neighbors === 2 || neighbors === 3) ? 1 : 0;
+		} else {
+			return (neighbors === 3) ? 1 : 0;
+		}
+	}
+	
+	var newGrid = function (width, height, fill) { // return a new grid data array
+		var grid = new Array(height), r, c;
+		for(r=0; r<height; r++) {
+			grid[r] = new Array(width);
+			for(c=0; c<width; c++) {
+				if(fill === null) {
+					grid[r][c] = (Math.floor(Math.random()*5) > 1) ? 0 : 1;
+				} else {
+					grid[r][c] = fill;
+				}
+			}
+		}
+		return grid;
+	};
+	
+	var paint = function (context, cellSize, grid) { // draw whole canvas
+		var r, c;
+		for(r in grid) {
+			for(c in grid[r]) {
+				if(grid[r][c]) {
+					paintCell(context, cellSize, r, c, 1, false);
+				} else {
+					paintCell(context, cellSize, r, c, 0, false);
+				}
+			}
+		}
+	};
+	
+	var paintCell = function (context, cellSize, r, c, state, highlight) { // draw individual cell
+		context.fillStyle = worldColor;
+		context.fillRect(c*cellSize, r*cellSize, cellSize, cellSize);
+		if(highlight) {
+			context.fillStyle = (state === 1) ? hiCellColor : hiWorldColor;
+		} else {
+			context.fillStyle = (state === 1) ? cellColor : worldColor;
+		}
+		if(highlight || state === 1) {
+			context.beginPath();
+			context.arc(c*cellSize + cellSize / 2, 
+				r*cellSize + cellSize / 2, 
+				cellSize/2, 
+				0, 
+				2 * Math.PI, 
+				false);
+			context.fill();
+		}
+	};
+	
+	var neighbors = function(grid, row, col) { // count cell neighbors
+		var n=0, r, c;
+		for(r=Math.max(row-1, 0); r<Math.min(row+2, grid.length); r++) {
+			for(c=Math.max(col-1, 0); c<Math.min(col+2, grid[0].length); c++) {
+				if(grid[r][c] && !(r === row && c === col)) {
+					n++;
+				}
+			}
+		}
+		return n;
+	};
+	
+	var iterate = function (grid, context, cellSize) { // advance life and draw updates
+		var r, c, newGrid = new Array(grid.length);
+		for(r=0; r<grid.length; r++) {
+			newGrid[r] = new Array(grid[0].length);
+			for(c=0; c<grid[0].length; c++) {
+				var n = neighbors(grid, r, c);
+				if(grid[r][c] === 1) {
+					if(n<2 || n > 3) {
+						paintCell(context, cellSize, r, c, 0, false);
+						newGrid[r][c] = 0;
+					} else {
+						newGrid[r][c] = 1;
+					}
+				} else {
+					if(n===3 || (n===6 && highLife)) {
+						paintCell(context, cellSize, r, c, 1, false);
+						newGrid[r][c] = 1;
+					} else {
+						newGrid[r][c] = 0;
+					}
+				}
+			}
+		}
+		return newGrid;
+	};
+
+
+	// World
+
+	var grid = newGrid(width, height, 0); // initial world
+	
+ 	var canvas = $("<canvas id='world' " +
+		"width='" + width*cellSize + "' " +
+		"height='" + height*cellSize + "' " +
+		"style='cursor: pointer;'>" +
+		"requires canvas support" +
+		"</canvas>");
+	
+	var context = canvas[0].getContext('2d');
+	
+	var go = false;
+	
+
+	// Draggables
+	
+	var translate = function (event, offset, cellSize) {
+		return {
+			r: Math.max(0, 
+				Math.min(height, 
+					Math.floor((event.pageY - offset.top - cellSize) / cellSize))),
+			c: Math.max(0, 
+				Math.min(width,
+					Math.floor((event.pageX - offset.left) / cellSize)))
+		};
+	}
+	
+	var ds = { 
+		rpent: [
+			[0,1,1], 
+			[1,1,0], 
+			[0,1,0]],
+			
+		gliderRight: [
+			[0,1,0], 
+			[0,0,1], 
+			[1,1,1]],
+			
+		gliderLeft: [
+			[0,1,0], 
+			[1,0,0], 
+			[1,1,1]],
+		
+		weekender: [ // so yeah a database would be good
+			[0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
+			[0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
+			[1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1],
+			[0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
+			[0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
+			[0,0,1,0,0,0,1,1,1,1,0,0,0,1,0,0],
+			[0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0],
+			[0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0],
+			[0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0]],
+		
+		orthoSpaceship: [
+			[0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0],
+			[0,0,0,0,1,1,0,1,0,1,1,0,1,1,1,0],
+			[0,1,1,1,1,0,0,1,1,0,0,0,0,0,0,1],
+			[1,0,0,0,0,1,0,0,0,1,0,0,0,1,1,0],
+			[0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0]],
+		
+		o44p5h2v0: [
+			[0,0,0,0,1,0,0,0,0,0,1,0,0,0,0],
+			[0,0,0,1,1,1,0,0,0,1,1,1,0,0,0],
+			[0,0,1,0,0,1,0,0,0,1,0,0,1,0,0],
+			[0,1,1,1,0,0,0,0,0,0,0,1,1,1,0],
+			[0,0,1,0,1,0,0,0,0,0,1,0,1,0,0],
+			[0,0,0,0,1,1,0,0,0,1,1,0,0,0,0],
+			[1,0,0,0,0,1,0,0,0,1,0,0,0,0,1],
+			[0,0,0,0,0,1,0,0,0,1,0,0,0,0,0],
+			[1,1,0,0,0,1,0,0,0,1,0,0,0,1,1],
+			[0,0,1,0,0,1,0,0,0,1,0,0,1,0,0],
+			[0,0,0,0,1,0,0,0,0,0,1,0,0,0,0]],
+			
+		spaceshipRight: [
+			[1,0,0,1,0], 
+			[0,0,0,0,1], 
+			[1,0,0,0,1], 
+			[0,1,1,1,1]],
+			
+		spaceshipLeft: [
+			[0,1,0,0,1], 
+			[1,0,0,0,0], 
+			[1,0,0,0,1], 
+			[1,1,1,1,0]],
+			
+		smallExploder: [
+			[0,1,0],
+			[1,1,1],
+			[1,0,1],
+			[0,1,0]],
+		
+		exploder: [
+			[1,0,1,0,1],
+			[1,0,0,0,1],
+			[1,0,0,0,1],
+			[1,0,0,0,1],
+			[1,0,1,0,1]],
+		
+		// tenCellRow: [[1,1,1,1,1,1,1,1,1,1]],
+		
+		tumbler: [
+			[0,1,1,0,1,1,0],
+			[0,1,1,0,1,1,0],
+			[0,0,1,0,1,0,0],
+			[1,0,1,0,1,0,1],
+			[1,0,1,0,1,0,1],
+			[1,1,0,0,0,1,1]],
+		
+		/*
+		gosperGliderGun: [
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,1,1,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,1,1,0,0],
+			[1,1,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[1,1,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
+			[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0]]
+		*/
+	};
+	
+	var dragging = false;
+	
+	var draggables = $("<div style='padding: 3px; background-color: #eee; width: " + (width*cellSize - 6) + "px;' />").appendTo($("body"));
+	
+	for(d in ds) { // should use paintCell
+		
+		var cvs = $("<canvas class='draggable' id='draggable-" + d + "' style='margin: 6px;' height='" + cellSize * ds[d].length + "' " +
+				"width='" + cellSize * ds[d][0].length + "'></canvas>");
+		cvs.attr('draggableIndex', d);
+		
+		var hiCells = [];
+		var dc = {};
+		cvs.draggable({
+			opacity: 0.00001, // guess i didn't really need draggable() after all
+			revert: true,
+			revertDuration: 0,
+			start: function (e, ui) {
+				// if(go) $("#toggleRun").click();
+				dragging = true;
+				dc.x = e.pageX - $(this).offset().left - 5;
+				dc.y = e.pageY - $(this).offset().top - 12;
+				hiCells = [];
+			},
+			drag: function (e, ui) {
+				e.pageX -= dc.x;
+				e.pageY -= dc.y;
+				var coords = translate(e, canvas.offset(), cellSize);
+				var rows = ds[$(this).attr('draggableIndex')];
+				for(i in hiCells) {
+					paintCell(context, cellSize, hiCells[i].r, hiCells[i].c, grid[hiCells[i].r][hiCells[i].c], 0);
+				}
+				hiCells = [];
+				for(r in rows) {
+					for(c in rows[r]) {
+						if(rows[r][c] === 1) {
+							hiCells.push({ r: coords.r+parseInt(r), c: coords.c+parseInt(c) });
+							paintCell(context, cellSize, coords.r+parseInt(r), coords.c+parseInt(c), 0, 1);
+						}
+					}
+				}
+			},
+			stop: function (e, ui) {
+				e.pageX -= dc.x;
+				e.pageY -= dc.y;
+				var coords = translate(e, canvas.offset(), cellSize);
+				coords.r; coords.c;
+				var rows = ds[$(this).attr('draggableIndex')];
+				for(i in hiCells) {
+					paintCell(context, cellSize, hiCells[i].r, hiCells[i].c, grid[hiCells[i].r][hiCells[i].c], 0);
+				}
+				for(r in rows) {
+					for(c in rows[r]) {
+						if(rows[r][c] === 1) {
+							grid[coords.r+parseInt(r)][coords.c+parseInt(c)] = 1;
+							paintCell(context, cellSize, coords.r+parseInt(r), coords.c+parseInt(c), 1, 0);
+						}
+					}
+				}
+				hiCells = [];
+				draggables.append(cvs);
+				dragging = false;
+			}
+		});
+		var ctx =cvs[0].getContext("2d");
+		for(r in ds[d]) {
+			for(c in ds[d][r]) {
+				if(ds[d][r][c]) {
+					ctx.fillStyle = "#444";
+					ctx.beginPath();
+					ctx.arc(c*cellSize + cellSize / 2, r*cellSize + cellSize / 2, 
+						cellSize/2, 0, 2 * Math.PI, false);
+					ctx.fill();
+				}
+			}
+		}
+		draggables.append(cvs);
+	}
+		
+	canvas.appendTo("body");
+	
+	
+	// Controls
+	
+	var controls = $("<div style='width: " + (width*cellSize + 2) + "px;' />").appendTo($("body"));
+	var gen = 0;
+
+	var advance = function () { // update board and return the time spent
+		var start = new Date().getTime();
+		var newGrid = iterate(grid, context, cellSize);
+		grid = newGrid;
+		gen++;
+		return new Date().getTime() - start;
+	};
+	
+	$("<button>&nbsp;</button>").click(function () {  // clear
+		grid = newGrid(width, height, 0);
+		paint(context, cellSize, grid);
+		gen = 0;
+	}).appendTo(controls);
+	
+	$("<button style='font-weight: bold;'>1</button>").click(function () {  // advance one gen
+		if(go) $("#toggleRun").click();
+		console.log(advance() + " ms (gen " + gen + ")");
+	}).appendTo(controls);
+	
+	var toggleRun = $("<button id='toggleRun'>&#9654;</button>").click(function () { // go/stop
+		if(go === false) { 
+			go = true;
+			var a = function () {
+				if(go) {
+					var time = advance();
+					setTimeout(function () { a(); }, Math.max(0, targetDelay - time));
+				}
+			};
+			a();
+			$(this).html("&#x275A;&#x275A;") // pause button
+		} else {
+			go = false;
+			$(this).html("&#9654;"); // play button
+		}
+
+	}).appendTo(controls);
+	
+	
+	// Painting and editing the canvas
+	
+	paint(context, cellSize, grid);
+	
+	var currentHighlight = { r: null, c: null };
+	var clearHighlight = function () {
+		if(currentHighlight.r !== null && currentHighlight.c !== null) {
+			paintCell(context, cellSize, 
+				currentHighlight.r, currentHighlight.c,
+				grid[currentHighlight.r][currentHighlight.c], false);
+		}
+	};
+	canvas.mouseout(function () {
+		clearHighlight();
+	});
+	canvas.mousemove(function (e) {
+		if(!dragging) {
+			coords = translate(e, canvas.offset(), cellSize);
+			clearHighlight();
+			currentHighlight = coords;
+			paintCell(context, cellSize, coords.r, coords.c, grid[coords.r][coords.c], true);
+		}
+	});
+	
+	var draw = false;
+	canvas.mousemove(function (e) {
+		if((draw !== false) && !dragging) {
+			var coords = translate(e, canvas.offset(), cellSize),
+				newState = (draw === false ? 1 : draw);
+			grid[coords.r][coords.c] = newState;
+			paintCell(context, cellSize, coords.r, coords.c, newState, true);
+		}
+	});
+	canvas.mousedown(function (e) {
+		var coords = translate(e, canvas.offset(), cellSize);
+		if(grid[coords.r][coords.c] === 1) {
+			draw = 0;
+		} else {
+			draw = 1;
+		}
+		grid[coords.r][coords.c] = draw;
+		paintCell(context, cellSize, coords.r, coords.c, draw, true);
+	});
+	$(document).mouseup(function () { 
+		draw = false;
+	});
+});
+</script>
+
+<style>
+body {
+	background-color: #fed; 
+	text-align: center;
+	padding-top: 25px;
+}
+button {
+	width: 4em;
+	height: 3.5em;
+	margin: 1em;
+	font-family: helvetica, arial;
+}
+canvas#world {
+	border: 1px solid #999;
+	-moz-box-shadow: 2px 2px 16px #666;
+	-webkit-box-shadow: 2px 2px 16px #666;
+	box-shadow: 2px 2px 16px #666;
+}
+canvas.draggable {
+	border: 1px solid #ccc;
+	background-color: white;
+	padding: 5px;
+	-moz-box-shadow: 1px 1px 8px #999;
+	-webkit-box-shadow: 1px 1px 8px #999;
+	box-shadow: 1px 1px 8px #999;
+}
+
+div {
+	-moz-box-shadow: 1px 1px 8px #333;
+	-webkit-box-shadow: 1px 1px 8px #333;
+	box-shadow: 1px 1px 8px #333;
+	margin: auto;
+	background-color: #555;
+}
+</style>
+</head>
+
+<body onSelectStart="this.style.cursor='pointer'; return false;"
+	onMouseup="this.style.cursor='default'">
+</body></html>
