@@ -3,7 +3,7 @@ Conway's Game of Life on Canvas
 
 This is a JavaScript
 [Conways's Game of Life](https://en.wikipedia.org/wiki/Conway's_Game_of_Life)
-toy I wrote in 2010 while learning use `<canvas>` elements.
+toy I wrote in 2010 while learning to use `<canvas>` elements.
 There's nothing interesting about this implementation, 
 but it's tweaked to be fun to play with.
 
